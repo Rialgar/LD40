@@ -90,7 +90,7 @@ window.getGameState = () => {
 			this.camera = new THREE.OrthographicCamera( width / -2, width / 2, height / 2, height / -2, 1, 1000 );
 			this.scene.add( this.camera );
 
-			this.balls = [{x: 410, y: 400, dir: {x: -1, y:-1}}, {x: 100, y: 100, dir: {x: 1, y:1}}];
+			this.balls = [];
 			this.ballData = new Uint8Array( twidth * 3 );
 
 			this.ballTexture = new THREE.DataTexture( this.ballData, twidth, 1, THREE.RGBFormat );
@@ -100,24 +100,24 @@ window.getGameState = () => {
 			this.setBallData();
 
 			this.horizontalWalls = [
-			{x1: 0, x2: 100, y:0},
-			{x1: 200, x2: 800, y:0},
-
-			{x1: 100, x2: 200, y:50},
-
-			{x1: 150, x2: 600, y:500},
-
-			{x1: 0, x2: 150, y:600},
-			{x1: 600, x2: 800, y:600}
+				{x1: 0, x2: 800, y:0},
+				{x1: 800, x2: 0, y:600}
 			];
 			this.verticalWalls = [
-			{x: 0, y1:0, y2: 600},
-			{x: 100, y1:0, y2: 50},
-			{x: 150, y1:500, y2: 600},
-			{x: 200, y1:0, y2: 50},
-			{x: 600, y1:500, y2: 600},
-			{x: 800, y1:0, y2: 600}
+				{x: 0, y1:600, y2: 0},
+				{x: 800, y1:0, y2: 600}
 			];
+
+			this.horizontalWalls[0].next = this.verticalWalls[1];
+			this.horizontalWalls[1].next = this.verticalWalls[0];
+			this.horizontalWalls[0].prev = this.verticalWalls[0];
+			this.horizontalWalls[1].prev = this.verticalWalls[1];
+
+			this.verticalWalls[0].next = this.horizontalWalls[0];
+			this.verticalWalls[1].next = this.horizontalWalls[1];
+			this.verticalWalls[0].prev = this.horizontalWalls[1];
+			this.verticalWalls[1].prev = this.horizontalWalls[0];
+
 			this.wallData = new Uint8Array( twidth * 3 * 2);
 
 			this.wallTexture = new THREE.DataTexture( this.wallData, twidth, 2, THREE.RGBFormat );
@@ -149,6 +149,124 @@ window.getGameState = () => {
 			this.camera.position.z = 2;
 			this.camera.lookAt(new THREE.Vector3(0,0,0));
 
+
+			window.state = this;
+		},
+
+		addWall(wall){
+			if(wall.prev){
+				console.assert(!wall.prev.next);
+				wall.prev.next = wall;
+			}
+			if(wall.next){
+				console.assert(!wall.next.prev);
+				wall.next.prev = wall;
+			}
+			if(wall.y !== undefined) {
+				let index = this.horizontalWalls.findIndex( w => w.y >= wall.y );
+				if(index < 0){
+					index = this.horizontalWalls.length;
+				}
+				this.horizontalWalls.splice(index, 0, wall);
+			} else {
+				let index = this.verticalWalls.findIndex( w => w.x >= wall.x );
+				if(index < 0){
+					index = this.verticalWalls.length;
+				}
+				this.verticalWalls.splice(index, 0, wall);
+			}
+		},
+
+		makeWall(from, to, prev, next){
+			const wall = { prev, next };
+			if( from.x === to.x){
+				wall.x = from.x;
+				wall.y1 = from.y;
+				wall.y2 = to.y;
+			} else {
+				wall.x1 = from.x;
+				wall.x2 = to.x;
+				wall.y = from.y;
+			}
+			return wall;
+		},
+
+		splitWall(wall, from, to){
+			const next = wall.next;
+			wall.next = undefined;
+			next.prev = undefined;
+			if(wall.y !== undefined){
+				const endX = wall.x2;
+				wall.x2 = from.x;
+				const newWall = this.makeWall(to, {x: endX, y: wall.y}, undefined, next);
+				this.addWall(newWall);
+				return newWall;
+			} else {
+				const endY = wall.y2 ;
+				wall.y2 = from.y;
+				const newWall = this.makeWall(to, {x: wall.x, y: endY}, undefined, next);
+				this.addWall(newWall);
+				return newWall;
+			}
+		},
+
+		removeWalls(startWall, endWall, from, to){
+			for(let nextWall = startWall.next; nextWall != endWall; nextWall = nextWall.next){
+				console.assert(nextWall && nextWall != startWall);
+				console.log('removing', nextWall);
+				if(nextWall.y !== undefined){
+					this.horizontalWalls.splice(this.horizontalWalls.indexOf(nextWall), 1);
+				} else {
+					this.verticalWalls.splice(this.verticalWalls.indexOf(nextWall), 1);
+				}
+			}
+			if(startWall.y !== undefined){
+				startWall.x2 = from.x;
+			} else {
+				startWall.y2 = from.y;
+			}
+			if(endWall.y !== undefined){
+				endWall.x1 = to.x;
+			} else {
+				endWall.y1 = to.y;
+			}
+			startWall.next = undefined;
+			endWall.prev = undefined;
+		},
+
+		findWallContaining(p){
+			let wall = this.horizontalWalls.find( w => w.y === p.y && w.x1 !== p.x && (w.x1 - p.x) * (w.x2 - p.x) <= 0 );
+			if(wall){
+				return wall;
+			}
+
+			return this.verticalWalls.find( w => w.x === p.x && w.y1 !== p.y && (w.y1 - p.y) * (w.y2 - p.y) <= 0 );
+		},
+
+		insertWalls(... points){
+			console.assert(points.length > 0);
+
+			const startWall = this.findWallContaining(points[0]);
+			let endWall = this.findWallContaining(points[points.length-1]);
+
+			console.assert(startWall)
+			console.assert(endWall);
+
+			if(startWall === endWall){
+				endWall = this.splitWall(startWall, points[0], points[points.length-1]);
+			} else {
+				this.removeWalls(startWall, endWall, points[0], points[points.length-1]);
+			}
+			let prev = startWall;
+			let next = undefined;
+			for (let i = 0; i+1 < points.length; i++) {
+				if(i+2 === points.length){
+					next = endWall;
+				}
+				prev = this.makeWall(points[i], points[i+1], prev, next);
+				this.addWall(prev);
+			}
+			this.setWallData();
 		},
 
 		getDistanceToWall(pos, wall){
@@ -291,20 +409,20 @@ window.getGameState = () => {
 			switch(true){
 				case this.app.keyboard.keys.w:
 				case this.app.keyboard.keys.up:
-				this.playerPos.y += dt * playerSpeed;
-				break;
+					this.playerPos.y += dt * playerSpeed;
+					break;
 				case this.app.keyboard.keys.s:
 				case this.app.keyboard.keys.down:
-				this.playerPos.y -= dt * playerSpeed;
-				break;
+					this.playerPos.y -= dt * playerSpeed;
+					break;
 				case this.app.keyboard.keys.a:
 				case this.app.keyboard.keys.left:
-				this.playerPos.x -= dt * playerSpeed;
-				break;
+					this.playerPos.x -= dt * playerSpeed;
+					break;
 				case this.app.keyboard.keys.d:
 				case this.app.keyboard.keys.right:
-				this.playerPos.x += dt * playerSpeed;
-				break;
+					this.playerPos.x += dt * playerSpeed;
+					break;
 			}
 			this.playerPos.x = Math.min(Math.max(this.playerPos.x, 0), 800)
 			this.playerPos.y = Math.min(Math.max(this.playerPos.y, 0), 600)

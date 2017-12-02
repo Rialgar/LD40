@@ -136,7 +136,8 @@ vec4 renderWalls( vec2 fragCoords ) {
 			float y = wall.z;
 
 			if(x1 <= fragCoords.x && fragCoords.x < x2){
-				horizontal += factor * smoothstep(y + (factor - 1.0) * thickness, y + (factor + 1.0) * thickness, fragCoords.y);
+				//horizontal += factor * smoothstep(y + (factor - 1.0) * thickness, y + (factor + 1.0) * thickness, fragCoords.y);
+				horizontal += factor * smoothstep(y - thickness, y + thickness, fragCoords.y);
 				factor *= -1.0;
 			};
 
@@ -165,7 +166,8 @@ vec4 renderWalls( vec2 fragCoords ) {
 			float y2 = max(wall.y, wall.z);
 
 			if(y1 <= fragCoords.y && fragCoords.y < y2){
-				vertical += factor * smoothstep(x + (factor - 1.0) * thickness, x + (factor + 1.0) * thickness, fragCoords.x);
+				//vertical += factor * smoothstep(x + (factor - 1.0) * thickness, x + (factor + 1.0) * thickness, fragCoords.x);
+				vertical += factor * smoothstep(x - thickness, x + thickness, fragCoords.x);
 				factor *= -1.0;
 			};
 		}
