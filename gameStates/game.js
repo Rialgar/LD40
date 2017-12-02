@@ -1,6 +1,10 @@
 "use strict";
 window.getGameState = () => {
 	const twidth = 512;
+	const ballSpeed = 150;
+	const ballRadius = 10;
+	const playerRadius = 10;
+	const playerSpeed = 300;
 
 	return {
 		setBallData(){
@@ -86,7 +90,7 @@ window.getGameState = () => {
 			this.camera = new THREE.OrthographicCamera( width / -2, width / 2, height / 2, height / -2, 1, 1000 );
 			this.scene.add( this.camera );
 
-			this.balls = [new THREE.Vector2(70,90), new THREE.Vector2(620,30)];
+			this.balls = [{x: 410, y: 400, dir: {x: -1, y:-1}}, {x: 100, y: 100, dir: {x: 1, y:1}}];
 			this.ballData = new Uint8Array( twidth * 3 );
 
 			this.ballTexture = new THREE.DataTexture( this.ballData, twidth, 1, THREE.RGBFormat );
@@ -96,23 +100,23 @@ window.getGameState = () => {
 			this.setBallData();
 
 			this.horizontalWalls = [
-				{x1: 0, x2: 100, y:0},
-				{x1: 200, x2: 800, y:0},
+			{x1: 0, x2: 100, y:0},
+			{x1: 200, x2: 800, y:0},
 
-				{x1: 100, x2: 200, y:50},
+			{x1: 100, x2: 200, y:50},
 
-				{x1: 150, x2: 600, y:500},
+			{x1: 150, x2: 600, y:500},
 
-				{x1: 0, x2: 150, y:600},
-				{x1: 600, x2: 800, y:600}
+			{x1: 0, x2: 150, y:600},
+			{x1: 600, x2: 800, y:600}
 			];
 			this.verticalWalls = [
-				{x: 0, y1:0, y2: 600},
-				{x: 100, y1:0, y2: 50},
-				{x: 150, y1:500, y2: 600},
-				{x: 200, y1:0, y2: 50},
-				{x: 600, y1:500, y2: 600},
-				{x: 800, y1:0, y2: 600}
+			{x: 0, y1:0, y2: 600},
+			{x: 100, y1:0, y2: 50},
+			{x: 150, y1:500, y2: 600},
+			{x: 200, y1:0, y2: 50},
+			{x: 600, y1:500, y2: 600},
+			{x: 800, y1:0, y2: 600}
 			];
 			this.wallData = new Uint8Array( twidth * 3 * 2);
 
@@ -147,30 +151,167 @@ window.getGameState = () => {
 
 		},
 
+		getDistanceToWall(pos, wall){
+			const b = new THREE.Vector2(pos.x, pos.y);
+			if( wall.x1 !== undefined ){
+				if((wall.x1 - b.x) * (wall.x2 - b.x) <= 0){
+					return Math.abs(b.y - wall.y);
+				} else {
+					const d1 = b.distanceTo(new THREE.Vector2(wall.x1, wall.y));
+					const d2 = b.distanceTo(new THREE.Vector2(wall.x2, wall.y));
+					return Math.min(d1, d2);
+				}
+			} else {
+				if((wall.y1 - b.y) * (wall.y2 - b.y) <= 0){
+					return Math.abs(b.x - wall.x);
+				} else {
+					const d1 = b.distanceTo(new THREE.Vector2(wall.x, wall.y1));
+					const d2 = b.distanceTo(new THREE.Vector2(wall.x, wall.y2));
+					return Math.min(d1, d2);
+				}
+			};
+		},
+
+		isInWall(pos, radius){
+			let count = 0;
+			for (let i = 0; i < this.horizontalWalls.length; i++) {
+				const wall = this.horizontalWalls[i];
+				if(radius && this.getDistanceToWall(pos, wall) <= radius){
+					return true;
+				}
+				const x1 = Math.min(wall.x1, wall.x2);
+				const x2 = Math.max(wall.x1, wall.x2);
+				if(x1 <= pos.x && pos.x < x2 && wall.y < pos.y){
+					count++;
+				}
+			};
+			return count % 2 == 0;
+		},
+
+		addBall(x, y){
+			let ball = {x: x ||0, y: y || 0, dir: {x: Math.random() > 0.5 ? 1 : -1, y: Math.random() > 0.5 ? 1 : -1}};
+			while(this.isInWall(ball, ballRadius)){
+				ball.x = Math.random() * 800;
+				ball.y = Math.random() * 600;
+			}
+			this.balls.push(ball);
+		},
+
+		getPointDistance(pos1, pos2){
+			const v1 = new THREE.Vector2(pos1.x, pos1.y);
+			const v2 = new THREE.Vector2(pos2.x, pos2.y);
+			return v1.distanceTo(v2);
+		},
+
+		checkBallColission(ball1, ball2){
+			const d = this.getPointDistance(ball1, ball2);
+
+			const flipY = () => {
+				ball1.y -= ball1.dir.y * (ballRadius - d/2);
+				ball2.y -= ball2.dir.y * (ballRadius - d/2);
+				ball1.dir.y *= -1;
+				ball2.dir.y *= -1;
+			};
+
+			const flipX = () => {
+				ball1.x -= ball1.dir.x * (ballRadius - d/2);
+				ball2.x -= ball2.dir.x * (ballRadius - d/2);
+				ball1.dir.x *= -1;
+				ball2.dir.x *= -1;
+			}
+
+			const flipBoth = () => {
+				const s = 1/Math.sqrt(2);
+
+				ball1.x -= ball1.dir.x * (ballRadius - d/2 * s);
+				ball1.y -= ball1.dir.y * (ballRadius - d/2 * s);
+
+				ball2.x -= ball2.dir.x * (ballRadius - d/2 * s);
+				ball2.y -= ball2.dir.y * (ballRadius - d/2 * s);
+
+				ball1.dir.x *= -1;
+				ball1.dir.y *= -1;
+				ball2.dir.x *= -1;
+				ball2.dir.y *= -1;
+			}
+
+			if( d <= 2*ballRadius){
+				if(ball1.dir.x === ball2.dir.x){
+					flipY();
+				} else if (ball1.dir.y === ball2.dir.y){
+					flipX();
+				} else {
+					var dx = Math.abs(ball1.x - ball2.x);
+					var dy = Math.abs(ball1.y - ball2.y);
+					if(dx > 1.2 * dy){
+						flipX();
+					} else if(dy > 1.2 * dx){
+						flipY();
+					} else {
+						flipBoth();
+					}
+				}
+			}
+		},
+
+		moveBalls(dt){
+			this.balls.forEach( ball => {
+				ball.x += ball.dir.x * ballSpeed * dt;
+				ball.y += ball.dir.y * ballSpeed * dt;
+				for (let i = 0; i < this.horizontalWalls.length; i++) {
+					const d = this.getDistanceToWall(ball, this.horizontalWalls[i]);
+					if(d <= ballRadius){
+						ball.y -= ball.dir.y * (ballRadius - d);
+						ball.dir.y *= -1;
+						break;
+					}
+				}
+				for (let i = 0; i < this.verticalWalls.length; i++) {
+					const d = this.getDistanceToWall(ball, this.verticalWalls[i]);
+					if(d <= ballRadius){
+						ball.x -= ball.dir.x * (ballRadius - d);
+						ball.dir.x *= -1;
+						break;
+					}
+				}
+			});
+			for (let i = 0; i+1 < this.balls.length; i++) {
+				for (let j = i+1; j < this.balls.length; j++) {
+					this.checkBallColission(this.balls[i], this.balls[j]);
+				}
+			}
+			this.setBallData();
+		},
+
 		step: function( dt ) {
 			this.uniforms.time.value += dt * 1000;
 
-			const playerSpeed = 300;
+			this.moveBalls( dt );
+
 			switch(true){
 				case this.app.keyboard.keys.w:
 				case this.app.keyboard.keys.up:
-					this.playerPos.y += dt * playerSpeed;
-					break;
+				this.playerPos.y += dt * playerSpeed;
+				break;
 				case this.app.keyboard.keys.s:
 				case this.app.keyboard.keys.down:
-					this.playerPos.y -= dt * playerSpeed;
-					break;
+				this.playerPos.y -= dt * playerSpeed;
+				break;
 				case this.app.keyboard.keys.a:
 				case this.app.keyboard.keys.left:
-					this.playerPos.x -= dt * playerSpeed;
-					break;
+				this.playerPos.x -= dt * playerSpeed;
+				break;
 				case this.app.keyboard.keys.d:
 				case this.app.keyboard.keys.right:
-					this.playerPos.x += dt * playerSpeed;
-					break;
+				this.playerPos.x += dt * playerSpeed;
+				break;
 			}
 			this.playerPos.x = Math.min(Math.max(this.playerPos.x, 0), 800)
 			this.playerPos.y = Math.min(Math.max(this.playerPos.y, 0), 600)
+		},
+
+		mousedown: function(event) {
+			this.addBall(event.x, 600-event.y);
 		},
 
 		render: function() {
