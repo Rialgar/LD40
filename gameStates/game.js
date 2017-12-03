@@ -5,6 +5,7 @@ window.getGameState = () => {
 	const ballRadius = 10;
 	const playerRadius = 10;
 	const playerSpeed = 300;
+	const screenshakeTime = 0.2;
 
 	return {
 		setBallData(){
@@ -133,23 +134,35 @@ window.getGameState = () => {
 			this.verticalWalls[0].prev = this.horizontalWalls[1];
 			this.verticalWalls[1].prev = this.horizontalWalls[0];
 
+			this.insertWalls([
+				{x: 0, y: 30},
+				{x: 30, y: 30},
+				{x: 30, y: 0}
+			]);
+
 			this.verifyWalls();
 
 			this.playerWalls = [];
+			this.playerPos.set(10, 10);
+			this.playerHealth = 5;
 
 			this.setBallData();
 			this.setWallData();
 			this.setPlayerWallData();
 		},
 
-		nextLevel(){
-			const newLevel = this.levelBefore + this.level;
-			this.levelBefore = this.level;
-			this.level = newLevel;
+		resetLevel(){
 			this.reset();
 			for (var i = 0; i < this.level; i++) {
 				this.addBall();
 			}
+		},
+
+		nextLevel(){
+			const newLevel = this.levelBefore + this.level;
+			this.levelBefore = this.level;
+			this.level = newLevel;
+			this.resetLevel();
 		},
 
 		create(){
@@ -174,20 +187,27 @@ window.getGameState = () => {
 			this.wallTexture.minFilter = THREE.NearestFilter;
 			this.wallTexture.magFilter = THREE.NearestFilter;
 
-			this.playerPos = new THREE.Vector2( 0, 300 );
-
 			this.playerWallData = new Uint8Array( twidth * 4);
 
 			this.playerWallTexture = new THREE.DataTexture( this.playerWallData, twidth, 1, THREE.RGBAFormat );
 			this.playerWallTexture.minFilter = THREE.NearestFilter;
 			this.playerWallTexture.magFilter = THREE.NearestFilter;
 
+			this.playerPos = new THREE.Vector2( 10, 10 );
+			this.playerInvincible = 0;
+
+			this.screenshake = new THREE.Vector2( 0, 0 );
+			this.screenshakeTimer = 0;
+
 			this.uniforms = {
 				ballData:  { value: this.ballTexture },
 				wallData:  { value: this.wallTexture },
 				playerWallData:  { value: this.playerWallTexture },
 				playerPos: { value: this.playerPos },
-				time: { value: 0 }
+				playerHealth: { value: 5 },
+				playerInvincible: { value: 0 },
+				time: { value: 0 },
+				screenshake: { value: this.screenshake }
 			};
 
 			const material = new THREE.ShaderMaterial({
@@ -204,6 +224,7 @@ window.getGameState = () => {
 			this.camera.position.z = 2;
 			this.camera.lookAt(new THREE.Vector3(0,0,0));
 
+			this.killcount = 0;
 			this.levelBefore = 0;
 			this.level = 1;
 			this.nextLevel();
@@ -271,7 +292,6 @@ window.getGameState = () => {
 		removeWalls(startWall, endWall, from, to){
 			for(let nextWall = startWall.next; nextWall != endWall; nextWall = nextWall.next){
 				console.assert(nextWall && nextWall != startWall);
-				console.log('remove');
 				if(nextWall.y !== undefined){
 					this.horizontalWalls.splice(this.horizontalWalls.indexOf(nextWall), 1);
 				} else {
@@ -365,16 +385,14 @@ window.getGameState = () => {
 			}
 			if(wall.y !== undefined) {
 				while(wall != next && wall.y === next.y && wall.x2 === next.x1){
-					console.log('joining');
 					wall.next = next.next;
 					wall.next.prev = wall;
 					wall.x2 = next.x2;
 					this.horizontalWalls.splice(this.horizontalWalls.indexOf(next), 1);
 					next = wall.next;
 				}
-			} else{
+			} else {
 				while(wall != next && wall.x === next.x && wall.y2 === next.y1){
-					console.log('joining', wall, next, next.next);
 					wall.next = next.next;
 					wall.next.prev = wall;
 					wall.y2 = next.y2;
@@ -462,17 +480,12 @@ window.getGameState = () => {
 
 			this.tryInsertWalls(points);
 			if(this.anyBallInWall()){
-
-				console.log('restoring backup, trying reverse');
-
 				this.horizontalWalls = backup.horizontal;
 				this.verticalWalls = backup.vertical;
 				backup = this.backupWalls();
 
 				this.tryInsertWalls(points.reverse());
 				if(this.anyBallInWall()){
-					console.log('restoring backup, cannot insert walls');
-
 					this.horizontalWalls = backup.horizontal;
 					this.verticalWalls = backup.vertical;
 
@@ -484,24 +497,36 @@ window.getGameState = () => {
 			return true;
 		},
 
+		getDistanceToLineSegment(p1, p2, b){
+			if(p1.x === p2.x && (p1.y - b.y)*(p2.y - b.y) <= 0){
+				return Math.abs(b.x - p1.x);
+			}
+			if(p1.y === p2.y && (p1.x - b.x)*(p2.x - b.x) <= 0){
+				return Math.abs(b.y - p1.y);
+			}
+			const d1 = b.distanceTo(p1);
+			const d2 = b.distanceTo(p2);
+			return Math.min(d1, d2);
+		},
+
+		getDistanceToPlayerWall(p1, p2, pos){
+			return this.getDistanceToLineSegment(p1, p2, new THREE.Vector2(pos.x, pos.y));
+		},
+
 		getDistanceToWall(pos, wall){
 			const b = new THREE.Vector2(pos.x, pos.y);
 			if( wall.x1 !== undefined ){
-				if((wall.x1 - b.x) * (wall.x2 - b.x) <= 0){
-					return Math.abs(b.y - wall.y);
-				} else {
-					const d1 = b.distanceTo(new THREE.Vector2(wall.x1, wall.y));
-					const d2 = b.distanceTo(new THREE.Vector2(wall.x2, wall.y));
-					return Math.min(d1, d2);
-				}
+				return this.getDistanceToLineSegment(
+					new THREE.Vector2(wall.x1, wall.y),
+					new THREE.Vector2(wall.x2, wall.y),
+					b
+				);
 			} else {
-				if((wall.y1 - b.y) * (wall.y2 - b.y) <= 0){
-					return Math.abs(b.x - wall.x);
-				} else {
-					const d1 = b.distanceTo(new THREE.Vector2(wall.x, wall.y1));
-					const d2 = b.distanceTo(new THREE.Vector2(wall.x, wall.y2));
-					return Math.min(d1, d2);
-				}
+				return this.getDistanceToLineSegment(
+					new THREE.Vector2(wall.x, wall.y1),
+					new THREE.Vector2(wall.x, wall.y2),
+					b
+				);
 			};
 		},
 
@@ -615,7 +640,12 @@ window.getGameState = () => {
 			const ballWallHitFrames = 5;
 			const ballRegen = 20;
 
+			let reset = false;
+
 			this.balls.forEach( ball => {
+				if(reset){
+					return;
+				}
 
 				if(ball.health <= 0){
 					ball.hit = ball.hit + 1;
@@ -645,8 +675,37 @@ window.getGameState = () => {
 						break;
 					}
 				}
+				for(let i = 0; i+1 < this.playerWalls.length; i++){
+					const d = this.getDistanceToPlayerWall(this.playerWalls[i], this.playerWalls[i+1], ball);
+					if(d < ballRadius){
+						this.playerWalls = [];
+						this.setPlayerWallData();
+					}
+				}
+				if( this.playerInvincible <= 0 && new THREE.Vector2(ball.x, ball.y).distanceTo(this.playerPos) < ballRadius * 1.6){ //cut the player some slack
+					this.playerHealth -= 1;
+					this.screenshakeTimer = screenshakeTime;
+					if(this.playerHealth === 0){
+						reset = true;
+						this.resetLevel();
+					} else {
+						this.playerInvincible = 1;
+					}
+				}
+				if(ball.health <= 0){
+					this.screenshakeTimer = screenshakeTime;
+				}
 			});
-			this.balls = this.balls.filter( ball => ball.health > 0 || ball.hit < 50);
+			if(reset){
+				return;
+			}
+			this.balls = this.balls.filter( ball => {
+				if(ball.health <= 0 && ball.hit >= 50){
+					this.killcount++;
+					return false;
+				}
+				return true;
+			});
 			for (let i = 0; i+1 < this.balls.length; i++) {
 				for (let j = i+1; j < this.balls.length; j++) {
 					if(this.doBallsColide(this.balls[i], this.balls[j])){
@@ -797,7 +856,10 @@ window.getGameState = () => {
 		},
 
 		step( dt ) {
+			console.log(this.playerInvincible, this.playerHealth);
 			this.uniforms.time.value += dt * 1000;
+			this.playerInvincible = Math.max(this.playerInvincible - dt, 0);
+			this.screenshakeTimer = Math.max(this.screenshakeTimer - dt, 0);
 
 			this.moveBalls( dt );
 
@@ -836,6 +898,15 @@ window.getGameState = () => {
 
 			if(this.balls.length === 0){
 				this.nextLevel();
+			}
+
+			this.uniforms.playerHealth.value = this.playerHealth;
+			this.uniforms.playerInvincible.value = this.playerInvincible;
+
+			if(this.screenshakeTimer > 0){
+				this.screenshake.set(Math.random()*6-3, Math.random()*6-3);
+			} else {
+				this.screenshake.set(0, 0);
 			}
 		},
 

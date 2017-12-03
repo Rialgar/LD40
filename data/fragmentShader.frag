@@ -2,11 +2,14 @@ uniform sampler2D ballData;
 uniform sampler2D wallData;
 uniform sampler2D playerWallData;
 uniform vec2 playerPos;
+uniform float playerHealth;
+uniform float playerInvincible;
 uniform float time;
+uniform vec2 screenshake;
 
 const float TAU = 6.2831853071;
 
-const vec3 PLAYER1 = vec3( 0.25, 0.5, 1.0);
+const vec3 PLAYER1 = vec3( 0.25, 0.25, 0.6);
 const vec3 PLAYER2 = vec3( 0.5, 1.0, 1.0);
 
 const vec3 BALL1 = vec3( 1.0, 0.4, 0.4);
@@ -23,8 +26,8 @@ vec2 rotate(vec2 vector, float angle){
 
 vec4 renderPlayer(vec2 fragCoords){
 	const float spintime = 3000.0;
-	const float slices = 3.0;
-	const float sliceWidth = TAU/slices;
+	float slices = playerHealth;
+	float sliceWidth = TAU/slices;
 	const float radius = 10.0;
 	const float borderWidth = 2.0;
 
@@ -43,6 +46,7 @@ vec4 renderPlayer(vec2 fragCoords){
 
 	playerColor = mix(playerColor, vec3(1.0), border);
 	playerColor = mix(playerColor, vec3(0.0), border2);
+	playerColor = mix(playerColor, vec3(1.0), playerInvincible);
 
 	return vec4(playerColor, vis);
 }
@@ -248,7 +252,7 @@ vec4 renderPlayerWalls(vec2 fragCoords){
 }
 
 void main( void ) {
-	vec2 fragCoords = gl_FragCoord.xy - vec2(0.5,0.5);
+	vec2 fragCoords = gl_FragCoord.xy - vec2(0.5,0.5) + screenshake;
 
 	vec4 color = renderPlayer(fragCoords);
 
