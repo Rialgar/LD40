@@ -47,7 +47,7 @@ vec4 renderPlayer(vec2 fragCoords){
 	return vec4(playerColor, vis);
 }
 
-vec4 renderBall(vec2 fragCoords, vec2 ballCoords){
+vec4 renderBall(vec2 fragCoords, vec3 ballData){
 	const float spintime = 3000.0;
 	const float slices = 3.0;
 	const float sliceWidth = TAU/slices;
@@ -56,17 +56,20 @@ vec4 renderBall(vec2 fragCoords, vec2 ballCoords){
 
 	float rotAngle = mod(time, spintime) / spintime * TAU;
 
-	vec2 coords = fragCoords - ballCoords;
+	vec2 coords = fragCoords - ballData.xy;
 	coords = rotate(coords, rotAngle);
 
 	float coordAngle = mod(atan(coords.x, coords.y), sliceWidth);
 	float a = step(-sliceWidth/2.0, coordAngle) - step(sliceWidth/2.0, coordAngle);
 
 	vec3 ballColor = mix(BALL1, BALL2, a);
-	float vis = smoothstep(radius + borderWidth, radius, length(coords));
 	float border = smoothstep(radius - borderWidth, radius, length(coords));
-
 	ballColor = mix(ballColor, vec3(1.0), border);
+
+	float health = ballData.z / 100.0;
+	ballColor = mix(vec3(0.0), ballColor, health);
+
+	float vis = smoothstep(radius + borderWidth, radius, length(coords));
 	return vec4(ballColor, vis);
 }
 
@@ -102,7 +105,7 @@ vec4 renderBalls( vec2 fragCoords ) {
 
 		if(ball.z > 0.0)
 		{
-			ballResult = alphaBlend(ballResult, renderBall( fragCoords, ball.xy ));
+			ballResult = alphaBlend(ballResult, renderBall( fragCoords, ball ));
 			if(ballResult.a >= 1.0){
 				return ballResult;
 			}
@@ -130,23 +133,21 @@ vec4 renderWalls( vec2 fragCoords ) {
 		coords.x += 1.0/512.0;
 		wall += texture2D(wallData, coords).xyz * 255.0;
 
-		if(wall.x != wall.y)
-		{
-			float x1 = min(wall.x, wall.y);
-			float x2 = max(wall.x, wall.y);
-			float y = wall.z;
-
-			if(x1 <= fragCoords.x && fragCoords.x < x2){
-				//horizontal += factor * smoothstep(y + (factor - 1.0) * thickness, y + (factor + 1.0) * thickness, fragCoords.y);
-				horizontal += factor * smoothstep(y - thickness, y + thickness, fragCoords.y);
-				factor *= -1.0;
-			};
-
-		}
-		else
+		if(wall.x == 0.0 && wall.y == 0.0 && wall.z == 0.0)
 		{
 			break;
 		}
+
+		float x1 = min(wall.x, wall.y);
+		float x2 = max(wall.x, wall.y);
+		float y = wall.z;
+
+		if(x1 <= fragCoords.x && fragCoords.x < x2){
+			//horizontal += factor * smoothstep(y + (factor - 1.0) * thickness, y + (factor + 1.0) * thickness, fragCoords.y);
+			horizontal += factor * smoothstep(y - thickness, y + thickness, fragCoords.y);
+			factor *= -1.0;
+		};
+
 	}
 
 	float vertical = 1.0;
@@ -160,22 +161,20 @@ vec4 renderWalls( vec2 fragCoords ) {
 		coords.x += 1.0/512.0;
 		wall += texture2D(wallData, coords).xyz * 255.0;
 
-		if(wall.y != wall.z)
-		{
-			float x = wall.x;
-			float y1 = min(wall.y, wall.z);
-			float y2 = max(wall.y, wall.z);
-
-			if(y1 <= fragCoords.y && fragCoords.y < y2){
-				//vertical += factor * smoothstep(x + (factor - 1.0) * thickness, x + (factor + 1.0) * thickness, fragCoords.x);
-				vertical += factor * smoothstep(x - thickness, x + thickness, fragCoords.x);
-				factor *= -1.0;
-			};
-		}
-		else
+		if(wall.x == 0.0 && wall.y == 0.0 && wall.z == 0.0)
 		{
 			break;
 		}
+
+		float x = wall.x;
+		float y1 = min(wall.y, wall.z);
+		float y2 = max(wall.y, wall.z);
+
+		if(y1 <= fragCoords.y && fragCoords.y < y2){
+			//vertical += factor * smoothstep(x + (factor - 1.0) * thickness, x + (factor + 1.0) * thickness, fragCoords.x);
+			vertical += factor * smoothstep(x - thickness, x + thickness, fragCoords.x);
+			factor *= -1.0;
+		};
 	}
 
 	return vec4(1.0, 1.0, 1.0, horizontal * vertical);

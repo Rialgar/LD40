@@ -20,8 +20,8 @@ window.getGameState = () => {
 				this.ballData[base+1] = Math.floor(ball.y / 256);
 				this.ballData[base+4] = Math.floor(ball.y % 256);
 
-				this.ballData[base+2] = 255;
-				this.ballData[base+5] = 255;
+				this.ballData[base+2] = 0;
+				this.ballData[base+5] = ball.health;
 			});
 			const last = this.balls.length * 6;
 			if(last+5 < this.ballData.length){
@@ -189,7 +189,7 @@ window.getGameState = () => {
 			this.camera.position.z = 2;
 			this.camera.lookAt(new THREE.Vector3(0,0,0));
 
-
+			this.verifyWalls();
 			window.state = this;
 		},
 
@@ -283,10 +283,93 @@ window.getGameState = () => {
 			return this.verticalWalls.find( w => w.x === p.x && w.y1 !== p.y && (w.y1 - p.y) * (w.y2 - p.y) <= 0 );
 		},
 
-		insertWalls(points){
+		backupWalls(){
+			const backup = {
+				horizontal: [],
+				vertical: []
+			}
+			this.horizontalWalls.forEach( wall => {
+				backup.horizontal.push({x1: wall.x1, x2: wall.x2, y: wall.y});
+			} );
+			this.verticalWalls.forEach( wall => {
+				backup.vertical.push({x: wall.x, y1: wall.y1, y2: wall.y2});
+			} );
+			this.horizontalWalls.forEach( (wall, i) => {
+				const bwall = backup.horizontal[i];
+				bwall.next = backup.vertical[this.verticalWalls.indexOf(wall.next)];
+				bwall.prev = backup.vertical[this.verticalWalls.indexOf(wall.prev)];
+			} );
+			this.verticalWalls.forEach( (wall, i) => {
+				const bwall = backup.vertical[i];
+				bwall.next = backup.horizontal[this.horizontalWalls.indexOf(wall.next)];
+				bwall.prev = backup.horizontal[this.horizontalWalls.indexOf(wall.prev)];
+			} );
+			return backup;
+		},
+
+		removeIfZero(wall){
+			if(!wall){
+				return;
+			}
+			const next = wall.next;
+			if(!next){
+				return;
+			}
+			const prev = wall.prev;
+			if(!prev){
+				return;
+			}
+
+			if(wall.y !== undefined && wall.x1 === wall.x2){
+				this.horizontalWalls.splice(this.horizontalWalls.indexOf(wall), 1);
+				prev.next = next;
+				next.prev = prev;
+				this.joinWithNextWhilePossible(prev);
+				return prev;
+			} else if(wall.x !== undefined && wall.y1 === wall.y2){
+				this.verticalWalls.splice(this.verticalWalls.indexOf(wall), 1);
+				prev.next = next;
+				next.prev = prev;
+				this.joinWithNextWhilePossible(prev);
+				return prev;
+			} else {
+				return wall;
+			}
+		},
+
+		joinWithNextWhilePossible(wall){
+			if(!wall){
+				return;
+			}
+			let next = wall.next;
+			if(!next){
+				return;
+			}
+			if(wall.y !== undefined) {
+				while(wall.y === next.y && wall.x2 === next.x1){
+					console.log('joining');
+					wall.next = next.next;
+					wall.next.prev = wall;
+					wall.x2 = next.x2;
+					this.horizontalWalls.splice(this.horizontalWalls.indexOf(next), 1);
+					next = wall.next;
+				}
+			} else{
+				while(wall.x === next.x && wall.y2 === next.y1){
+					console.log('joining', wall, next, next.next);
+					wall.next = next.next;
+					wall.next.prev = wall;
+					wall.y2 = next.y2;
+					this.verticalWalls.splice(this.verticalWalls.indexOf(next), 1);
+					next = wall.next;
+				}
+			}
+		},
+
+		tryInsertWalls(points){
 			console.assert(points.length > 0);
 
-			const startWall = this.findWallContaining(points[0]);
+			let startWall = this.findWallContaining(points[0]);
 			let endWall = this.findWallContaining(points[points.length-1]);
 
 			console.assert(startWall)
@@ -318,7 +401,69 @@ window.getGameState = () => {
 				prev = this.makeWall(points[i], points[i+1], prev, next);
 				this.addWall(prev);
 			}
+			startWall = this.removeIfZero(startWall);
+			endWall = this.removeIfZero(endWall);
+			this.joinWithNextWhilePossible(startWall);
+			this.joinWithNextWhilePossible(endWall.prev);
+		},
+
+		anyBallInWall() {
+			for (let i = 0; i < this.balls.length; i++) {
+				//we reduce the ball radius checked to prevent a ball that is just colliding becaue it was not pushed out enought from counting
+				if(this.isInWall(this.balls[i], ballRadius/1.5)){
+					return true;
+				}
+			}
+			return false;
+		},
+
+		verifyWalls(){
+			console.assert(this.horizontalWalls.length === this.verticalWalls.length, 'parity', this.horizontalWalls.length, this.verticalWalls.length);
+			var expected = this.horizontalWalls.length + this.verticalWalls.length;
+			var count = 0;
+			var current = this.horizontalWalls[0];
+			do {
+				console.assert(current.next.prev === current, 'bidir', count, current);
+				if(current.y !== undefined){
+					console.assert(current.x1 !== current.x2, 'non zero', count, current);
+					console.assert(current.y === current.next.y1 && current.x2 === current.next.x, 'edges', count, current);
+				} else {
+					console.assert(current.y1 !== current.y2, 'non zero', count, current);
+					console.assert(current.x === current.next.x1 && current.y2 === current.next.y, 'edges', count, current);
+				}
+				current = current.next;
+				count++;
+			} while(current != this.horizontalWalls[0])
+
+			console.assert(count === expected);
+		},
+
+		insertWalls(points){
+			console.assert(!this.anyBallInWall(), 'crap, a ball is collding before we even started');
+			let backup = this.backupWalls();
+
+			this.tryInsertWalls(points);
+			if(this.anyBallInWall()){
+
+				console.log('restoring backup, trying reverse');
+
+				this.horizontalWalls = backup.horizontal;
+				this.verticalWalls = backup.vertical;
+				backup = this.backupWalls();
+
+				this.tryInsertWalls(points.reverse());
+				if(this.anyBallInWall()){
+					console.log('restoring backup, cannot insert walls');
+
+					this.horizontalWalls = backup.horizontal;
+					this.verticalWalls = backup.vertical;
+
+					return false;
+				}
+			}
+			this.verifyWalls();
 			this.setWallData();
+			return true;
 		},
 
 		getDistanceToWall(pos, wall){
@@ -368,7 +513,7 @@ window.getGameState = () => {
 		},
 
 		addBall(x, y){
-			let ball = {x: x ||0, y: y || 0, dir: {x: Math.random() > 0.5 ? 1 : -1, y: Math.random() > 0.5 ? 1 : -1}};
+			let ball = {x: x ||0, y: y || 0, health: 100, dir: {x: Math.random() > 0.5 ? 1 : -1, y: Math.random() > 0.5 ? 1 : -1}};
 			while(this.isInWall(ball, ballRadius)){
 				ball.x = Math.random() * 800;
 				ball.y = Math.random() * 600;
@@ -434,12 +579,18 @@ window.getGameState = () => {
 		},
 
 		moveBalls(dt){
+			const ballWallDamage = 10;
+			const ballRegen = 20;
+
 			this.balls.forEach( ball => {
+				console.log(ball.health, ball.health + ballRegen * dt, dt);
+				ball.health = Math.min(100, ball.health + ballRegen * dt);
 				ball.x += ball.dir.x * ballSpeed * dt;
 				ball.y += ball.dir.y * ballSpeed * dt;
 				for (let i = 0; i < this.horizontalWalls.length; i++) {
 					const d = this.getDistanceToWall(ball, this.horizontalWalls[i]);
 					if(d <= ballRadius){
+						ball.health -= ballWallDamage;
 						ball.y -= ball.dir.y * (ballRadius - d);
 						ball.dir.y *= -1;
 						break;
@@ -448,12 +599,14 @@ window.getGameState = () => {
 				for (let i = 0; i < this.verticalWalls.length; i++) {
 					const d = this.getDistanceToWall(ball, this.verticalWalls[i]);
 					if(d <= ballRadius){
+						ball.health -= ballWallDamage;
 						ball.x -= ball.dir.x * (ballRadius - d);
 						ball.dir.x *= -1;
 						break;
 					}
 				}
 			});
+			this.balls = this.balls.filter( ball => ball.health > 0);
 			for (let i = 0; i+1 < this.balls.length; i++) {
 				for (let j = i+1; j < this.balls.length; j++) {
 					this.checkBallColission(this.balls[i], this.balls[j]);
@@ -532,15 +685,26 @@ window.getGameState = () => {
 			const posAfter = new THREE.Vector2(this.playerPos.x, this.playerPos.y).round();
 
 			if(playerMovement.length() > 0) {
-				if(this.playerWalls.length > 0){
+
+				let doUpdate = true;
+
+ 				if(this.playerWalls.length === 0 && !this.isInWall(posAfter, 1)) { //start a wall
+ 					const posBeforeMoved = posBefore.clone().sub(posAfter).setLength(5).add(posBefore);
+					const intersection = this.findIntersection(posBeforeMoved, posAfter);
+					if(intersection){
+						this.playerWalls.push(intersection.point);
+						this.playerWalls.push(posAfter);
+					}
+					doUpdate = false;
+				} else if(this.playerWalls.length == 2) { //did we cancel building?
 					const dBefore = posBefore.distanceTo(this.playerWalls[0]);
 					const dAfter = posAfter.distanceTo(this.playerWalls[0]);
-					if(dBefore > dAfter && dAfter < 5){
+					if(dBefore > dAfter && dAfter < 5) {
 						this.playerWalls = [];
 					}
 				}
 
-				if (this.playerWalls.length > 1) {
+				if (doUpdate && this.playerWalls.length > 1) { //update last wall
 					const last = this.playerWalls[this.playerWalls.length-1];
 					const beforeLast = this.playerWalls[this.playerWalls.length-2];
 					const delta = last.clone().sub(beforeLast);
@@ -550,15 +714,9 @@ window.getGameState = () => {
 					}
 
 					this.playerWalls.push(posAfter);
-				} else if(!this.isInWall(posAfter, 1)) {
-					const intersection = this.findIntersection(posBefore, posAfter);
-					if(intersection){
-						this.playerWalls.push(intersection.point);
-						this.playerWalls.push(posAfter);
-					}
 				}
 
-				if(this.playerWalls.length > 1){
+				if(this.playerWalls.length > 1){ //close and build if applicable
 					const last = this.playerWalls[this.playerWalls.length-1];
 					const beforeLast = this.playerWalls[this.playerWalls.length-2].clone();
 
@@ -575,7 +733,8 @@ window.getGameState = () => {
 						this.playerWalls = [];
 					}
 				}
-				if(this.playerWalls.length > 4){
+
+				if(this.playerWalls.length > 4){ //reduce if self-intesecting
 					const last = this.playerWalls[this.playerWalls.length-1];
 					const beforeLast = this.playerWalls[this.playerWalls.length-2];
 					for (let i = 1; i < this.playerWalls.length-2; i++) {
