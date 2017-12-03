@@ -25,7 +25,11 @@ window.getGameState = () => {
 			});
 			const last = this.balls.length * 6;
 			if(last+5 < this.ballData.length){
+				this.ballData[last] = 0;
+				this.ballData[last+1] = 0;
 				this.ballData[last+2] = 0;
+				this.ballData[last+3] = 0;
+				this.ballData[last+4] = 0;
 				this.ballData[last+5] = 0;
 			}
 			this.ballTexture.needsUpdate = true;
@@ -37,7 +41,7 @@ window.getGameState = () => {
 					console.error('too many walls', i);
 					return;
 				}
-				const base = i*6;
+				const base = i*2 * 3;
 				this.wallData[base] = Math.floor(wall.x1 / 256);
 				this.wallData[base+3] = Math.floor(wall.x1 % 256);
 
@@ -47,9 +51,10 @@ window.getGameState = () => {
 				this.wallData[base+2] = Math.floor(wall.y / 256);
 				this.wallData[base+5] = Math.floor(wall.y % 256);
 			});
-			const lastH = this.horizontalWalls.length * 6;
+			const lastH = this.horizontalWalls.length*2 * 3;
 			if(lastH+5 < twidth * 3){
 				this.wallData[lastH] = 0;
+				this.wallData[lastH+1] = 0;
 				this.wallData[lastH+2] = 0;
 				this.wallData[lastH+3] = 0;
 				this.wallData[lastH+4] = 0;
@@ -70,15 +75,40 @@ window.getGameState = () => {
 				this.wallData[base+2] = Math.floor(wall.y2 / 256);
 				this.wallData[base+5] = Math.floor(wall.y2 % 256);
 			});
-			const lastV = twidth + this.horizontalWalls.length * 6;
+			const lastV = (twidth + this.verticalWalls.length*2) * 3;
 			if(lastV+5 < twidth * 2 * 3){
 				this.wallData[lastV] = 0;
+				this.wallData[lastV+1] = 0;
 				this.wallData[lastV+2] = 0;
 				this.wallData[lastV+3] = 0;
 				this.wallData[lastV+4] = 0;
 				this.wallData[lastV+5] = 0;
 			}
 			this.wallTexture.needsUpdate = true;
+		},
+
+		setPlayerWallData(){
+			this.playerWalls.forEach( (point, i) => {
+				if(i >= twidth){
+					console.error('too many player walls', i);
+					return;
+				}
+				const base = i*4;
+				this.playerWallData[base] = Math.floor(point.x / 256);
+				this.playerWallData[base+2] = Math.floor(point.x % 256);
+
+				this.playerWallData[base+1] = Math.floor(point.y / 256);
+				this.playerWallData[base+3] = Math.floor(point.y % 256);
+			});
+			const last = this.playerWalls.length * 4;
+			if(last+3 < twidth * 4){
+				this.playerWallData[last] = 0;
+				this.playerWallData[last+1] = 0;
+				this.playerWallData[last+2] = 0;
+				this.playerWallData[last+3] = 0;
+			}
+
+			this.playerWallTexture.needsUpdate = true;
 		},
 
 		create: function() {
@@ -126,11 +156,21 @@ window.getGameState = () => {
 
 			this.setWallData();
 
-			this.playerPos = new THREE.Vector2( 400, 300 );
+			this.playerPos = new THREE.Vector2( 0, 300 );
+			this.playerWalls = [];
+
+			this.playerWallData = new Uint8Array( twidth * 4);
+
+			this.playerWallTexture = new THREE.DataTexture( this.playerWallData, twidth, 1, THREE.RGBAFormat );
+			this.playerWallTexture.minFilter = THREE.NearestFilter;
+			this.playerWallTexture.magFilter = THREE.NearestFilter;
+
+			this.setPlayerWallData();
 
 			this.uniforms = {
 				ballData:  { value: this.ballTexture },
 				wallData:  { value: this.wallTexture },
+				playerWallData:  { value: this.playerWallTexture },
 				playerPos: { value: this.playerPos },
 				time: { value: 0 }
 			};
@@ -213,7 +253,7 @@ window.getGameState = () => {
 		removeWalls(startWall, endWall, from, to){
 			for(let nextWall = startWall.next; nextWall != endWall; nextWall = nextWall.next){
 				console.assert(nextWall && nextWall != startWall);
-				console.log('removing', nextWall);
+				console.log('remove');
 				if(nextWall.y !== undefined){
 					this.horizontalWalls.splice(this.horizontalWalls.indexOf(nextWall), 1);
 				} else {
@@ -243,7 +283,7 @@ window.getGameState = () => {
 			return this.verticalWalls.find( w => w.x === p.x && w.y1 !== p.y && (w.y1 - p.y) * (w.y2 - p.y) <= 0 );
 		},
 
-		insertWalls(... points){
+		insertWalls(points){
 			console.assert(points.length > 0);
 
 			const startWall = this.findWallContaining(points[0]);
@@ -252,10 +292,22 @@ window.getGameState = () => {
 			console.assert(startWall)
 			console.assert(endWall);
 
+			const from = points[0];
+			const to = points[points.length-1];
+
+			let doRemove = true;
+
 			if(startWall === endWall){
-				endWall = this.splitWall(startWall, points[0], points[points.length-1]);
-			} else {
-				this.removeWalls(startWall, endWall, points[0], points[points.length-1]);
+				const startWallHSplit = startWall.y !== undefined && (from.x - startWall.x1) * (from.x - to.x) <= 0;
+				const startWallVSplit = startWall.x !== undefined && (from.y - startWall.y1) * (from.y - to.y) <= 0;
+				if(startWallHSplit || startWallVSplit){
+					endWall = this.splitWall(startWall, from, to);
+					doRemove = false;
+				}
+			}
+
+			if(doRemove) {
+				this.removeWalls(startWall, endWall, from, to);
 			}
 			let prev = startWall;
 			let next = undefined;
@@ -303,7 +355,16 @@ window.getGameState = () => {
 					count++;
 				}
 			};
-			return count % 2 == 0;
+			const isIn = count % 2 == 0;
+			if(!isIn && radius){
+				for (let i = 0; i < this.verticalWalls.length; i++) {
+					const wall = this.verticalWalls[i];
+					if(this.getDistanceToWall(pos, wall) <= radius){
+						return true;
+					}
+				}
+			}
+			return isIn;
 		},
 
 		addBall(x, y){
@@ -359,8 +420,8 @@ window.getGameState = () => {
 				} else if (ball1.dir.y === ball2.dir.y){
 					flipX();
 				} else {
-					var dx = Math.abs(ball1.x - ball2.x);
-					var dy = Math.abs(ball1.y - ball2.y);
+					const dx = Math.abs(ball1.x - ball2.x);
+					const dy = Math.abs(ball1.y - ball2.y);
 					if(dx > 1.2 * dy){
 						flipX();
 					} else if(dy > 1.2 * dx){
@@ -401,31 +462,175 @@ window.getGameState = () => {
 			this.setBallData();
 		},
 
+		intersect(p1, p2, q1, q2){
+			const a = p2.clone().sub(p1);
+			const b = q2.clone().sub(q1);
+
+			if(a.y === 0.0 && b.y === 0.0){
+				return null;
+			}
+
+			if(a.x === 0.0 && b.x === 0.0){
+				return null;
+			};
+
+			//we have only straight walls, no need to check other parallel options
+
+			const tMax = a.length();
+			a.normalize();
+
+			const uMax = b.length();
+			b.normalize();
+
+			const na = new THREE.Vector2(a.y, -a.x);
+			const nb = new THREE.Vector2(b.y, -b.x);
+
+			const start = q1.clone().sub(p1);
+			const divisor = a.dot(nb);
+			const t = start.dot(nb) / divisor;
+			const u = start.dot(na) / divisor;
+
+			if(0.0 <= t && t <= tMax && 0.0 <= u && u <= uMax){
+				return p1.clone().add(a.clone().multiplyScalar(t));
+			}
+
+			return null;
+		},
+
+		findIntersection(p1, p2){
+			for (let i = 0; i < this.horizontalWalls.length; i++) {
+				const wall = this.horizontalWalls[i];
+				const q1 = new THREE.Vector2(wall.x1, wall.y);
+				const q2 = new THREE.Vector2(wall.x2, wall.y);
+				const point = this.intersect(p1, p2, q1, q2);
+				if(point){
+					return {
+						wall,
+						point
+					};
+				}
+			}
+			for (let i = 0; i < this.verticalWalls.length; i++) {
+				const wall = this.verticalWalls[i];
+				const q1 = new THREE.Vector2(wall.x, wall.y1);
+				const q2 = new THREE.Vector2(wall.x, wall.y2);
+				const point = this.intersect(p1, p2, q1, q2);
+				if(point){
+					return {
+						wall,
+						point
+					};
+				}
+			}
+			return null;
+		},
+
+		processPlayerMovement(playerMovement, dt) {
+			const posBefore = new THREE.Vector2(this.playerPos.x, this.playerPos.y).round();
+			this.playerPos.x = Math.min(Math.max(this.playerPos.x + playerMovement.x * dt * playerSpeed, 0), 800)
+			this.playerPos.y = Math.min(Math.max(this.playerPos.y + playerMovement.y * dt * playerSpeed, 0), 600)
+			const posAfter = new THREE.Vector2(this.playerPos.x, this.playerPos.y).round();
+
+			if(playerMovement.length() > 0) {
+				if(this.playerWalls.length > 0){
+					const dBefore = posBefore.distanceTo(this.playerWalls[0]);
+					const dAfter = posAfter.distanceTo(this.playerWalls[0]);
+					if(dBefore > dAfter && dAfter < 5){
+						this.playerWalls = [];
+					}
+				}
+
+				if (this.playerWalls.length > 1) {
+					const last = this.playerWalls[this.playerWalls.length-1];
+					const beforeLast = this.playerWalls[this.playerWalls.length-2];
+					const delta = last.clone().sub(beforeLast);
+
+					if((playerMovement.y !== 0 && delta.y !== 0) || (playerMovement.x !== 0 && delta.x !== 0)){
+						this.playerWalls.pop();
+					}
+
+					this.playerWalls.push(posAfter);
+				} else if(!this.isInWall(posAfter, 1)) {
+					const intersection = this.findIntersection(posBefore, posAfter);
+					if(intersection){
+						this.playerWalls.push(intersection.point);
+						this.playerWalls.push(posAfter);
+					}
+				}
+
+				if(this.playerWalls.length > 1){
+					const last = this.playerWalls[this.playerWalls.length-1];
+					const beforeLast = this.playerWalls[this.playerWalls.length-2].clone();
+
+					const dir = last.clone().sub(beforeLast).normalize();
+					beforeLast.add(dir);
+
+					const intersection = this.findIntersection(beforeLast, last);
+					if(intersection){
+						if(intersection.point.distanceTo(this.playerWalls[0]) > 2){
+							this.playerWalls.pop();
+							this.playerWalls.push(intersection.point);
+							this.insertWalls(this.playerWalls);
+						}
+						this.playerWalls = [];
+					}
+				}
+				if(this.playerWalls.length > 4){
+					const last = this.playerWalls[this.playerWalls.length-1];
+					const beforeLast = this.playerWalls[this.playerWalls.length-2];
+					for (let i = 1; i < this.playerWalls.length-2; i++) {
+						const from = this.playerWalls[i-1];
+						const to = this.playerWalls[i];
+						const point = this.intersect(from, to, beforeLast, last);
+						if(point){
+							this.playerWalls = this.playerWalls.slice(0, i);
+							this.playerWalls.push(point);
+							break;
+						}
+					}
+				}
+
+				this.setPlayerWallData();
+			}
+		},
+
 		step: function( dt ) {
 			this.uniforms.time.value += dt * 1000;
 
 			this.moveBalls( dt );
 
+			const playerMovement = new THREE.Vector2();
 			switch(true){
 				case this.app.keyboard.keys.w:
 				case this.app.keyboard.keys.up:
-					this.playerPos.y += dt * playerSpeed;
+				case (this.app.gamepads[0] && this.app.gamepads[0].buttons.up):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[0].y < -0.5):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[1].y < -0.5):
+					playerMovement.y = 1;
 					break;
 				case this.app.keyboard.keys.s:
 				case this.app.keyboard.keys.down:
-					this.playerPos.y -= dt * playerSpeed;
+				case (this.app.gamepads[0] && this.app.gamepads[0].buttons.down):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[0].y > 0.5):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[1].y > 0.5):
+					playerMovement.y = -1;
 					break;
 				case this.app.keyboard.keys.a:
 				case this.app.keyboard.keys.left:
-					this.playerPos.x -= dt * playerSpeed;
+				case (this.app.gamepads[0] && this.app.gamepads[0].buttons.left):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[0].x < -0.5):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[1].x < -0.5):
+					playerMovement.x = -1;
 					break;
 				case this.app.keyboard.keys.d:
 				case this.app.keyboard.keys.right:
-					this.playerPos.x += dt * playerSpeed;
+				case (this.app.gamepads[0] && this.app.gamepads[0].buttons.right):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[0].x > 0.5):
+				case (this.app.gamepads[0] && this.app.gamepads[0].sticks[1].x > 0.5):
+					playerMovement.x = 1;
 					break;
 			}
-			this.playerPos.x = Math.min(Math.max(this.playerPos.x, 0), 800)
-			this.playerPos.y = Math.min(Math.max(this.playerPos.y, 0), 600)
+			this.processPlayerMovement(playerMovement, dt);
 		},
 
 		mousedown: function(event) {

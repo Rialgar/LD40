@@ -1,5 +1,6 @@
 uniform sampler2D ballData;
 uniform sampler2D wallData;
+uniform sampler2D playerWallData;
 uniform vec2 playerPos;
 uniform float time;
 
@@ -177,7 +178,49 @@ vec4 renderWalls( vec2 fragCoords ) {
 		}
 	}
 
-	return mix(vec4(0.0), vec4(1.0), horizontal * vertical);
+	return vec4(1.0, 1.0, 1.0, horizontal * vertical);
+}
+
+float distanceToLineSegment(vec2 from, vec2 to, vec2 point){
+	float tMax = length(to - from);
+	vec2 a = normalize(to - from);
+	vec2 n = vec2(a.y, -a.x);
+
+	vec2 b = point - from;
+	float t = dot(a, b);
+
+	if(0.0 < t && t < tMax){
+		return abs(dot(n, b));
+	} else {
+		return min(length(b), length(point-to));
+	}
+}
+
+vec4 renderPlayerWalls(vec2 fragCoords){
+	const float thickness = 3.0;
+
+	float d = 1e20;
+	vec2 pointA, pointB;
+	vec2 coords = vec2(0.0, 0.5);
+	for(int i = 0; i < 512; i++)
+	{
+		coords.x = (float(i) + 0.5) / 512.0;
+
+		pointA = pointB;
+		vec4 data = texture2D(playerWallData, coords) * 255.0;
+		pointB = data.xy * 256.0 + data.zw;
+		if(pointB.x == 0.0 && pointB.y == 0.0){
+			break;
+		}
+		if(i == 0){
+			continue;
+		}
+
+		d = min(d, distanceToLineSegment(pointA, pointB, fragCoords));
+	}
+
+	float a = smoothstep(thickness, 0.0, d);
+	return vec4( 1.0, 1.0, 1.0, a );
 }
 
 void main( void ) {
@@ -189,6 +232,14 @@ void main( void ) {
 		gl_FragColor = color;
 		return;
 	};
+
+	color = alphaBlend(color, renderPlayerWalls(fragCoords));
+
+	if(color.a >= 1.0){
+		gl_FragColor = color;
+		return;
+	};
+
 	color = alphaBlend(color, renderBalls(fragCoords));
 
 	if(color.a >= 1.0){
