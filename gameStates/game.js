@@ -905,6 +905,8 @@ window.getGameState = () => {
 			} else {
 				this.screenshake.set(0, 0);
 			}
+
+			document.getElementById('score').textContent = this.killcount;
 		},
 
 		render() {

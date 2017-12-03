@@ -2,7 +2,7 @@
 <!--(X)HTML5 & CSS3 Polyglot Markup-->
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
 	<head>
-		<title>Rialgar’s Games - LD 39</title>
+		<title>Trapping Circles - LD 40 - by Rialgar</title>
 		<meta charset="utf-8" />
 		<script src="playground-base.js" async="async" defer="defer" />
 		<script src="three.js" async="async" defer="defer" />
@@ -17,14 +17,24 @@
 				width: 100%;
 				height: 100%;
 				background-color: black;
+				color: rgb(187,164,127);
 			}
 			canvas {
 				border: 2px solid gray;
 				position: relative;
 			}
+			#scoreContainer {
+				position: absolute;
+				text-align: center;
+				width: 804px;
+				height: 2em;
+				line-height: 2em;
+			}
 		</style>
 	</head>
 	<body>
-		<!-- enter content here -->
+		<div id='scoreContainer'>
+			Enemies defeated: <span id="score">0</span>
+		</div>
 	</body>
 </html>

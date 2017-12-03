@@ -27,6 +27,10 @@ window.addEventListener('load', () => {
 			console.log(((this.height - 804) / 2) + 'px');
 			this.renderer.domElement.style.top = ((this.height - 604) / 2) + 'px';
 			this.renderer.domElement.style.left = ((this.width - 804) / 2) + 'px';
+
+			const score = document.getElementById('scoreContainer');
+			score.style.top = ((this.height - 604) / 2) + 604 + 'px';
+			score.style.left = ((this.width - 804) / 2) + 'px';
 		}
 	});
 });
