@@ -1,7 +1,7 @@
 "use strict";
 window.addEventListener('load', () => {
 	playground({
-		create: function () {
+		create() {
 			this.renderer = new THREE.WebGLRenderer();
 			this.renderer.setSize(800, 600);
 			this.container.appendChild(this.renderer.domElement);
@@ -14,9 +14,8 @@ window.addEventListener('load', () => {
 			this.loadData('fragmentShader.frag');
 			this.loadData('vertexShader.vert');
 		},
-		ready: function () {
+		ready() {
 			this.setState(this.gameStates.game);
-		},
-		resize: function(){}
+		}
 	});
 });

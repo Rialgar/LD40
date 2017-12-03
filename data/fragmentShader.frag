@@ -34,7 +34,7 @@ vec4 renderPlayer(vec2 fragCoords){
 	coords = rotate(coords, rotAngle);
 
 	float coordAngle = mod(atan(coords.x, coords.y), sliceWidth);
-	float a = step(-sliceWidth/2.0, coordAngle) - step(sliceWidth/2.0, coordAngle);
+	float a = step(sliceWidth/2.0, coordAngle);
 
 	vec3 playerColor = mix(PLAYER1, PLAYER2, a);
 	float border = smoothstep(radius - borderWidth, radius, length(coords));
@@ -47,7 +47,7 @@ vec4 renderPlayer(vec2 fragCoords){
 	return vec4(playerColor, vis);
 }
 
-vec4 renderBall(vec2 fragCoords, vec3 ballData){
+vec4 renderBall(vec2 fragCoords, vec4 ballData){
 	const float spintime = 3000.0;
 	const float slices = 3.0;
 	const float sliceWidth = TAU/slices;
@@ -60,14 +60,34 @@ vec4 renderBall(vec2 fragCoords, vec3 ballData){
 	coords = rotate(coords, rotAngle);
 
 	float coordAngle = mod(atan(coords.x, coords.y), sliceWidth);
-	float a = step(-sliceWidth/2.0, coordAngle) - step(sliceWidth/2.0, coordAngle);
+	coordAngle -= sliceWidth/2.0;
 
-	vec3 ballColor = mix(BALL1, BALL2, a);
-	float border = smoothstep(radius - borderWidth, radius, length(coords));
-	ballColor = mix(ballColor, vec3(1.0), border);
+	float hit = ballData.z;
+	float health = ballData.w / 100.0;
 
-	float health = ballData.z / 100.0;
-	ballColor = mix(vec3(0.0), ballColor, health);
+	if(hit > 5.0){
+		float d = length(coords);
+		float divisor = 1.5*d/radius;
+		float angleV = step(-sliceWidth/divisor, coordAngle) - step(sliceWidth/divisor, coordAngle);
+
+		hit = hit/2.0;
+		float visib = smoothstep(radius + borderWidth + hit, radius + hit, d) - smoothstep(hit, hit-borderWidth, d);
+		return vec4(vec3(1.0), angleV*visib);
+	}
+
+	vec3 ballColor;
+	if(hit > 0.0) {
+		ballColor = vec3(1.0);
+	} else {
+		float a = step(-sliceWidth/4.0, coordAngle) - step(sliceWidth/4.0, coordAngle);
+
+		ballColor = mix(BALL1, BALL2, a);
+		float border = smoothstep(radius - borderWidth, radius, length(coords));
+		ballColor = mix(ballColor, vec3(1.0), border);
+
+
+		ballColor = mix(vec3(1.0), ballColor, health);
+	}
 
 	float vis = smoothstep(radius + borderWidth, radius, length(coords));
 	return vec4(ballColor, vis);
@@ -99,11 +119,16 @@ vec4 renderBalls( vec2 fragCoords ) {
 	{
 		coords.x = (float(2*i) + 0.5) / 512.0;
 
-		vec3 ball = texture2D(ballData, coords).xyz * 255.0 * 256.0;
+		vec3 ballData1 = texture2D(ballData, coords).xyz * 255.0;
 		coords.x += 1.0/512.0;
-		ball += texture2D(ballData, coords).xyz * 255.0;
+		vec3 ballData2 = texture2D(ballData, coords).xyz * 255.0;
 
-		if(ball.z > 0.0)
+		vec4 ball = vec4(0.0);
+		ball.xy = ballData1.xy * 256.0 + ballData2.xy;
+		ball.z = ballData1.z;
+		ball.w = ballData2.z;
+
+		if(ball.z > 0.0 || ball.w > 0.0)
 		{
 			ballResult = alphaBlend(ballResult, renderBall( fragCoords, ball ));
 			if(ballResult.a >= 1.0){

@@ -20,7 +20,7 @@ window.getGameState = () => {
 				this.ballData[base+1] = Math.floor(ball.y / 256);
 				this.ballData[base+4] = Math.floor(ball.y % 256);
 
-				this.ballData[base+2] = 0;
+				this.ballData[base+2] = ball.hit;
 				this.ballData[base+5] = ball.health;
 			});
 			const last = this.balls.length * 6;
@@ -111,23 +111,8 @@ window.getGameState = () => {
 			this.playerWallTexture.needsUpdate = true;
 		},
 
-		create: function() {
-
-			const width = 800, height = 600;
-
-			this.scene = new THREE.Scene();
-
-			this.camera = new THREE.OrthographicCamera( width / -2, width / 2, height / 2, height / -2, 1, 1000 );
-			this.scene.add( this.camera );
-
+		reset(){
 			this.balls = [];
-			this.ballData = new Uint8Array( twidth * 3 );
-
-			this.ballTexture = new THREE.DataTexture( this.ballData, twidth, 1, THREE.RGBFormat );
-			this.ballTexture.minFilter = THREE.NearestFilter;
-			this.ballTexture.magFilter = THREE.NearestFilter;
-
-			this.setBallData();
 
 			this.horizontalWalls = [
 				{x1: 0, x2: 800, y:0},
@@ -148,24 +133,54 @@ window.getGameState = () => {
 			this.verticalWalls[0].prev = this.horizontalWalls[1];
 			this.verticalWalls[1].prev = this.horizontalWalls[0];
 
+			this.verifyWalls();
+
+			this.playerWalls = [];
+
+			this.setBallData();
+			this.setWallData();
+			this.setPlayerWallData();
+		},
+
+		nextLevel(){
+			const newLevel = this.levelBefore + this.level;
+			this.levelBefore = this.level;
+			this.level = newLevel;
+			this.reset();
+			for (var i = 0; i < this.level; i++) {
+				this.addBall();
+			}
+		},
+
+		create(){
+
+			const width = 800, height = 600;
+
+			this.scene = new THREE.Scene();
+
+			this.camera = new THREE.OrthographicCamera( width / -2, width / 2, height / 2, height / -2, 1, 1000 );
+			this.scene.add( this.camera );
+
+
+			this.ballData = new Uint8Array( twidth * 3 );
+
+			this.ballTexture = new THREE.DataTexture( this.ballData, twidth, 1, THREE.RGBFormat );
+			this.ballTexture.minFilter = THREE.NearestFilter;
+			this.ballTexture.magFilter = THREE.NearestFilter;
+
 			this.wallData = new Uint8Array( twidth * 3 * 2);
 
 			this.wallTexture = new THREE.DataTexture( this.wallData, twidth, 2, THREE.RGBFormat );
 			this.wallTexture.minFilter = THREE.NearestFilter;
 			this.wallTexture.magFilter = THREE.NearestFilter;
 
-			this.setWallData();
-
 			this.playerPos = new THREE.Vector2( 0, 300 );
-			this.playerWalls = [];
 
 			this.playerWallData = new Uint8Array( twidth * 4);
 
 			this.playerWallTexture = new THREE.DataTexture( this.playerWallData, twidth, 1, THREE.RGBAFormat );
 			this.playerWallTexture.minFilter = THREE.NearestFilter;
 			this.playerWallTexture.magFilter = THREE.NearestFilter;
-
-			this.setPlayerWallData();
 
 			this.uniforms = {
 				ballData:  { value: this.ballTexture },
@@ -189,7 +204,10 @@ window.getGameState = () => {
 			this.camera.position.z = 2;
 			this.camera.lookAt(new THREE.Vector3(0,0,0));
 
-			this.verifyWalls();
+			this.levelBefore = 0;
+			this.level = 1;
+			this.nextLevel();
+
 			window.state = this;
 		},
 
@@ -346,7 +364,7 @@ window.getGameState = () => {
 				return;
 			}
 			if(wall.y !== undefined) {
-				while(wall.y === next.y && wall.x2 === next.x1){
+				while(wall != next && wall.y === next.y && wall.x2 === next.x1){
 					console.log('joining');
 					wall.next = next.next;
 					wall.next.prev = wall;
@@ -355,7 +373,7 @@ window.getGameState = () => {
 					next = wall.next;
 				}
 			} else{
-				while(wall.x === next.x && wall.y2 === next.y1){
+				while(wall != next && wall.x === next.x && wall.y2 === next.y1){
 					console.log('joining', wall, next, next.next);
 					wall.next = next.next;
 					wall.next.prev = wall;
@@ -410,7 +428,7 @@ window.getGameState = () => {
 		anyBallInWall() {
 			for (let i = 0; i < this.balls.length; i++) {
 				//we reduce the ball radius checked to prevent a ball that is just colliding becaue it was not pushed out enought from counting
-				if(this.isInWall(this.balls[i], ballRadius/1.5)){
+				if(this.balls[i].health > 0 && this.isInWall(this.balls[i], ballRadius/1.5)){
 					return true;
 				}
 			}
@@ -513,8 +531,8 @@ window.getGameState = () => {
 		},
 
 		addBall(x, y){
-			let ball = {x: x ||0, y: y || 0, health: 100, dir: {x: Math.random() > 0.5 ? 1 : -1, y: Math.random() > 0.5 ? 1 : -1}};
-			while(this.isInWall(ball, ballRadius)){
+			let ball = {x: x ||0, y: y || 0, health: 100, hit: 0, dir: {x: Math.random() > 0.5 ? 1 : -1, y: Math.random() > 0.5 ? 1 : -1}};
+			while(this.isInWall(ball, ballRadius) || this.doesAnyBallColide(ball)){
 				ball.x = Math.random() * 800;
 				ball.y = Math.random() * 600;
 			}
@@ -527,7 +545,23 @@ window.getGameState = () => {
 			return v1.distanceTo(v2);
 		},
 
-		checkBallColission(ball1, ball2){
+		doBallsColide(ball1, ball2){
+			if(ball1.health <= 0 || ball2.health <= 0){
+				return false;
+			}
+			const d = this.getPointDistance(ball1, ball2);
+			return d <= 2*ballRadius
+		},
+
+		doesAnyBallColide(ball){
+			for (let i = 0; i < this.balls.length; i++) {
+				if(this.doBallsColide(ball, this.balls[i])){
+					return true;
+				}
+			}
+		},
+
+		handleBallColission(ball1, ball2){
 			const d = this.getPointDistance(ball1, ball2);
 
 			const flipY = () => {
@@ -559,31 +593,35 @@ window.getGameState = () => {
 				ball2.dir.y *= -1;
 			}
 
-			if( d <= 2*ballRadius){
-				if(ball1.dir.x === ball2.dir.x){
-					flipY();
-				} else if (ball1.dir.y === ball2.dir.y){
+			if(ball1.dir.x === ball2.dir.x){
+				flipY();
+			} else if (ball1.dir.y === ball2.dir.y){
+				flipX();
+			} else {
+				const dx = Math.abs(ball1.x - ball2.x);
+				const dy = Math.abs(ball1.y - ball2.y);
+				if(dx > 1.2 * dy){
 					flipX();
+				} else if(dy > 1.2 * dx){
+					flipY();
 				} else {
-					const dx = Math.abs(ball1.x - ball2.x);
-					const dy = Math.abs(ball1.y - ball2.y);
-					if(dx > 1.2 * dy){
-						flipX();
-					} else if(dy > 1.2 * dx){
-						flipY();
-					} else {
-						flipBoth();
-					}
+					flipBoth();
 				}
 			}
 		},
 
 		moveBalls(dt){
 			const ballWallDamage = 10;
+			const ballWallHitFrames = 5;
 			const ballRegen = 20;
 
 			this.balls.forEach( ball => {
-				console.log(ball.health, ball.health + ballRegen * dt, dt);
+
+				if(ball.health <= 0){
+					ball.hit = ball.hit + 1;
+					return;
+				}
+				ball.hit = Math.max(0, ball.hit - 1);
 				ball.health = Math.min(100, ball.health + ballRegen * dt);
 				ball.x += ball.dir.x * ballSpeed * dt;
 				ball.y += ball.dir.y * ballSpeed * dt;
@@ -591,6 +629,7 @@ window.getGameState = () => {
 					const d = this.getDistanceToWall(ball, this.horizontalWalls[i]);
 					if(d <= ballRadius){
 						ball.health -= ballWallDamage;
+						ball.hit = ballWallHitFrames;
 						ball.y -= ball.dir.y * (ballRadius - d);
 						ball.dir.y *= -1;
 						break;
@@ -600,16 +639,19 @@ window.getGameState = () => {
 					const d = this.getDistanceToWall(ball, this.verticalWalls[i]);
 					if(d <= ballRadius){
 						ball.health -= ballWallDamage;
+						ball.hit = ballWallHitFrames;
 						ball.x -= ball.dir.x * (ballRadius - d);
 						ball.dir.x *= -1;
 						break;
 					}
 				}
 			});
-			this.balls = this.balls.filter( ball => ball.health > 0);
+			this.balls = this.balls.filter( ball => ball.health > 0 || ball.hit < 50);
 			for (let i = 0; i+1 < this.balls.length; i++) {
 				for (let j = i+1; j < this.balls.length; j++) {
-					this.checkBallColission(this.balls[i], this.balls[j]);
+					if(this.doBallsColide(this.balls[i], this.balls[j])){
+						this.handleBallColission(this.balls[i], this.balls[j]);
+					}
 				}
 			}
 			this.setBallData();
@@ -717,11 +759,12 @@ window.getGameState = () => {
 				}
 
 				if(this.playerWalls.length > 1){ //close and build if applicable
-					const last = this.playerWalls[this.playerWalls.length-1];
+					const last = this.playerWalls[this.playerWalls.length-1].clone();
 					const beforeLast = this.playerWalls[this.playerWalls.length-2].clone();
 
 					const dir = last.clone().sub(beforeLast).normalize();
 					beforeLast.add(dir);
+					last.add(dir.clone().multiplyScalar(3));
 
 					const intersection = this.findIntersection(beforeLast, last);
 					if(intersection){
@@ -753,7 +796,7 @@ window.getGameState = () => {
 			}
 		},
 
-		step: function( dt ) {
+		step( dt ) {
 			this.uniforms.time.value += dt * 1000;
 
 			this.moveBalls( dt );
@@ -790,13 +833,17 @@ window.getGameState = () => {
 					break;
 			}
 			this.processPlayerMovement(playerMovement, dt);
+
+			if(this.balls.length === 0){
+				this.nextLevel();
+			}
 		},
 
-		mousedown: function(event) {
+		mousedown(event) {
 			this.addBall(event.x, 600-event.y);
 		},
 
-		render: function() {
+		render() {
 			this.app.renderer.render(this.scene, this.camera);
 		}
 	}
