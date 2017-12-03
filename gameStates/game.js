@@ -228,8 +228,6 @@ window.getGameState = () => {
 			this.levelBefore = 0;
 			this.level = 1;
 			this.nextLevel();
-
-			window.state = this;
 		},
 
 		addWall(wall){
@@ -823,7 +821,7 @@ window.getGameState = () => {
 
 					const dir = last.clone().sub(beforeLast).normalize();
 					beforeLast.add(dir);
-					last.add(dir.clone().multiplyScalar(3));
+					last.add(dir.clone().multiplyScalar(5));
 
 					const intersection = this.findIntersection(beforeLast, last);
 					if(intersection){
@@ -856,7 +854,6 @@ window.getGameState = () => {
 		},
 
 		step( dt ) {
-			console.log(this.playerInvincible, this.playerHealth);
 			this.uniforms.time.value += dt * 1000;
 			this.playerInvincible = Math.max(this.playerInvincible - dt, 0);
 			this.screenshakeTimer = Math.max(this.screenshakeTimer - dt, 0);
@@ -908,10 +905,6 @@ window.getGameState = () => {
 			} else {
 				this.screenshake.set(0, 0);
 			}
-		},
-
-		mousedown(event) {
-			this.addBall(event.x, 600-event.y);
 		},
 
 		render() {

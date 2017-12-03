@@ -13,9 +13,20 @@ window.addEventListener('load', () => {
 
 			this.loadData('fragmentShader.frag');
 			this.loadData('vertexShader.vert');
+
+			document.body.style.background = null;
 		},
 		ready() {
 			this.setState(this.gameStates.game);
+		},
+		resize() {
+			console.log(this.width, this.height);
+			console.log(this.height);
+			console.log(this.height - 804);
+			console.log((this.height - 804) / 2);
+			console.log(((this.height - 804) / 2) + 'px');
+			this.renderer.domElement.style.top = ((this.height - 604) / 2) + 'px';
+			this.renderer.domElement.style.left = ((this.width - 804) / 2) + 'px';
 		}
 	});
 });

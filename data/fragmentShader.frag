@@ -206,7 +206,7 @@ vec4 renderWalls( vec2 fragCoords ) {
 		};
 	}
 
-	return vec4(1.0, 1.0, 1.0, horizontal * vertical);
+	return vec4(187.0/255.0, 164.0/255.0, 127.0/255.0, horizontal * vertical);
 }
 
 float distanceToLineSegment(vec2 from, vec2 to, vec2 point){
